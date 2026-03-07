@@ -1,0 +1,202 @@
+(function () {
+  var API_URL = window.__SAE_API_URL__ || '';
+  var root = document.getElementById('app');
+  if (!root) return;
+
+  var state = {
+    route: 'dashboard',
+    data: null,
+    error: null,
+    loading: false,
+  };
+
+  function escapeHtml(v) {
+    return String(v === undefined || v === null ? '' : v)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  function callAction(action, payload) {
+    return fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: action, payload: payload || {} }),
+    }).then(function (r) { return r.json(); });
+  }
+
+  function navButton(key, label) {
+    var active = state.route === key ? 'active' : '';
+    return '<button class="nav-btn ' + active + '" data-route="' + key + '">' + label + '</button>';
+  }
+
+  function renderLayout(content) {
+    root.innerHTML =
+      '<div class="layout">' +
+      '  <aside class="sidebar">' +
+      '    <h2>SAE</h2>' +
+      navButton('dashboard', 'Dashboard') +
+      navButton('insumos', 'Insumos') +
+      navButton('snapshot', 'Snapshot') +
+      navButton('movimentacao', 'Movimentação') +
+      navButton('analytics', 'Analytics') +
+      '  </aside>' +
+      '  <main class="content">' + content + '</main>' +
+      '</div>';
+
+    var buttons = root.querySelectorAll('[data-route]');
+    for (var i = 0; i < buttons.length; i += 1) {
+      buttons[i].addEventListener('click', function (ev) {
+        state.route = ev.currentTarget.getAttribute('data-route');
+        loadRoute();
+      });
+    }
+  }
+
+  function renderCard(title, body) {
+    return '<div class="card"><h3>' + escapeHtml(title) + '</h3>' + body + '</div>';
+  }
+
+  function renderTable(headers, rows) {
+    var thead = '<tr>' + headers.map(function (h) { return '<th>' + escapeHtml(h) + '</th>'; }).join('') + '</tr>';
+    var tbody = rows.length ? rows.map(function (r) {
+      return '<tr>' + r.map(function (c) { return '<td>' + escapeHtml(c) + '</td>'; }).join('') + '</tr>';
+    }).join('') : '<tr><td colspan="' + headers.length + '">Sem dados</td></tr>';
+    return '<table class="table"><thead>' + thead + '</thead><tbody>' + tbody + '</tbody></table>';
+  }
+
+  function withStateContent(inner) {
+    if (state.loading) return '<div class="card">Carregando...</div>';
+    if (state.error) return '<div class="card error">' + escapeHtml(state.error) + '</div>';
+    return inner;
+  }
+
+  function renderDashboard(data) {
+    var summary =
+      '<div class="grid grid-3">' +
+      renderCard('Itens Ativos', '<p>' + escapeHtml(data.total_itens_ativos) + '</p>') +
+      renderCard('Itens Críticos', '<p>' + escapeHtml((data.itens_criticos || []).length) + '</p>') +
+      renderCard('Pedidos Abertos', '<p>' + escapeHtml((data.pedidos_abertos || []).length) + '</p>') +
+      '</div>';
+
+    var movimentos = (data.ultimos_movimentos || []).map(function (m) {
+      return [m.data_hora_lancamento_iso, m.codigo_ax, m.tipo_movimento, m.quantidade_movimento];
+    });
+
+    return summary + renderCard('Últimos Movimentos', renderTable(['Data', 'Código', 'Tipo', 'Qtd'], movimentos));
+  }
+
+  function renderInsumos(data) {
+    var rows = (data || []).map(function (i) {
+      return [i.codigo_ax, i.descricao, i.unidade, i.ponto_ressuprimento, i.ativo];
+    });
+    return renderCard('Cadastro de Insumos', renderTable(['Código', 'Descrição', 'Unidade', 'Ponto', 'Ativo'], rows));
+  }
+
+  function renderMovimentacao(data) {
+    var rows = (data || []).map(function (m) {
+      return [m.data_hora_lancamento_iso, m.codigo_ax, m.tipo_contexto, m.tipo_movimento, m.quantidade_movimento];
+    });
+    return renderCard('Histórico de Movimentação', renderTable(['Data', 'Código', 'Contexto', 'Tipo', 'Qtd'], rows));
+  }
+
+  function renderAnalytics(data) {
+    var top =
+      '<div class="grid grid-3">' +
+      renderCard('Total Saídas', '<p>' + escapeHtml(data.total_saidas || 0) + '</p>') +
+      renderCard('Média Diária', '<p>' + escapeHtml(Number(data.media_diaria || 0).toFixed(2)) + '</p>') +
+      renderCard('Média Mensal', '<p>' + escapeHtml(Number(data.media_mensal || 0).toFixed(2)) + '</p>') +
+      '</div>';
+
+    var rows = (data.consumo_mensal || []).map(function (m) { return [m.competencia, m.quantidade]; });
+    return top + renderCard('Consumo Mensal', renderTable(['Competência', 'Quantidade'], rows));
+  }
+
+  function renderSnapshotForm() {
+    return '' +
+      '<div class="card">' +
+      '  <h3>Lançamento de Snapshot</h3>' +
+      '  <div class="grid">' +
+      '    <input id="snap_codigo" placeholder="codigo_ax" />' +
+      '    <input id="snap_qtd" type="number" min="0" placeholder="quantidade_atual" />' +
+      '    <select id="snap_ctx">' +
+      '      <option>FECHAMENTO_DIARIO</option>' +
+      '      <option>LEITURA_INTERMEDIARIA</option>' +
+      '      <option>INVENTARIO</option>' +
+      '      <option>AJUSTE</option>' +
+      '    </select>' +
+      '    <input id="snap_data" placeholder="2026-03-07T16:00:00Z" />' +
+      '    <textarea id="snap_obs" placeholder="observacao"></textarea>' +
+      '    <button class="primary" id="snap_send">Enviar</button>' +
+      '  </div>' +
+      '  <div id="snap_feedback"></div>' +
+      '</div>';
+  }
+
+  function bindSnapshotForm() {
+    var btn = document.getElementById('snap_send');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      var payload = {
+        codigo_ax: document.getElementById('snap_codigo').value,
+        quantidade_atual: Number(document.getElementById('snap_qtd').value || 0),
+        tipo_contexto: document.getElementById('snap_ctx').value,
+        data_hora_lancamento_iso: document.getElementById('snap_data').value,
+        observacao: document.getElementById('snap_obs').value,
+      };
+      var feedback = document.getElementById('snap_feedback');
+      feedback.innerHTML = 'Enviando...';
+      callAction('inventory.snapshot.create', payload).then(function (res) {
+        if (!res.ok) {
+          feedback.innerHTML = '<p class="error">' + escapeHtml(res.message) + '</p>';
+          return;
+        }
+        feedback.innerHTML = '<pre>' + escapeHtml(JSON.stringify(res.data, null, 2)) + '</pre>';
+      }).catch(function (err) {
+        feedback.innerHTML = '<p class="error">' + escapeHtml(err.message) + '</p>';
+      });
+    });
+  }
+
+  function loadRoute() {
+    state.loading = true;
+    state.error = null;
+
+    var route = state.route;
+    var action = {
+      dashboard: 'dashboard.summary',
+      insumos: 'item.list',
+      movimentacao: 'inventory.movement.list',
+      analytics: 'analytics.consumption',
+    }[route];
+
+    if (route === 'snapshot') {
+      state.loading = false;
+      renderLayout(withStateContent(renderSnapshotForm()));
+      bindSnapshotForm();
+      return;
+    }
+
+    callAction(action, {}).then(function (res) {
+      if (!res.ok) throw new Error(res.message || 'Falha ao carregar dados');
+      state.data = res.data;
+      state.loading = false;
+
+      var content = '';
+      if (route === 'dashboard') content = renderDashboard(state.data);
+      if (route === 'insumos') content = renderInsumos(state.data);
+      if (route === 'movimentacao') content = renderMovimentacao(state.data);
+      if (route === 'analytics') content = renderAnalytics(state.data);
+
+      renderLayout(withStateContent(content));
+    }).catch(function (err) {
+      state.loading = false;
+      state.error = err.message;
+      renderLayout(withStateContent(''));
+    });
+  }
+
+  loadRoute();
+})();

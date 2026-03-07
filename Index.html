@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SAE - Controle de Suprimentos</title>
+    <style><?!= include('AppCss'); ?></style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script>
+      window.__SAE_API_URL__ = '<?= ScriptApp.getService().getUrl() ?>';
+    </script>
+    <script><?!= include('AppBundle'); ?></script>
+  </body>
+</html>
