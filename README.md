@@ -309,3 +309,10 @@ Já foi definido e validado:
 - abrir backlog em tarefas executáveis
 - definir critérios de aceite por módulo
 - começar implementação do backend GAS
+
+
+## Frontend embutido no GAS (Opção B)
+- `doGet()` serve `Index.html` via `HtmlService`.
+- `Index.html` inclui `AppCss.html` e `AppBundle.html`.
+- Frontend em JavaScript puro embutido em `AppBundle.html` e estilo em `AppCss.html`.
+- Checklist operacional: `CHECKLIST_DEPLOY_OPCAO_B_GAS.md`.
