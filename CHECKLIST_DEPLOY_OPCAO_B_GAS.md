@@ -47,4 +47,5 @@ Servir o frontend diretamente no Web App do Google Apps Script, sem dependência
 
 ## Observações importantes
 - GAS **não interpreta `.vue` diretamente**.
-- O frontend em `AppBundle.html` usa `window.__SAE_API_URL__` (definido em `Index.html`) para chamar o próprio endpoint do Web App.
+- Na UI embutida, as ações são chamadas via `google.script.run.runAction(...)` para evitar CORS/preflight.
+- O fallback HTTP usa `window.__SAE_API_URL__` apenas fora do contexto HtmlService.

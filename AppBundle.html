@@ -21,9 +21,23 @@
   }
 
   function callAction(action, payload) {
+    // Preferência para UI embutida no GAS (evita CORS/preflight):
+    // usa bridge server-side via google.script.run -> runAction(action, payload)
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+      return new Promise(function (resolve, reject) {
+        google.script.run
+          .withSuccessHandler(resolve)
+          .withFailureHandler(function (err) {
+            reject(new Error((err && err.message) ? err.message : 'Falha em google.script.run'));
+          })
+          .runAction(action, payload || {});
+      });
+    }
+
+    // Fallback para ambientes externos ao GAS
     return fetch(API_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ action: action, payload: payload || {} }),
     }).then(function (r) { return r.json(); });
   }

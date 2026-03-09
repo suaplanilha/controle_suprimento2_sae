@@ -1,4 +1,3 @@
-
 function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
@@ -23,31 +22,54 @@ function parseRequest(e) {
   }
 }
 
-function handleHttpPost(e, gateway) {
-  try {
-    var body = parseRequest(e);
-    Validators.validateEnvelope(body);
+function resolveGateway() {
+  var spreadsheetId = PropertiesService.getScriptProperties().getProperty('DB_SPREADSHEET_ID');
+  if (!spreadsheetId) {
+    throw new Errors.AppError('CONFIG_ERROR', 'DB_SPREADSHEET_ID não configurado', null, 500);
+  }
+  return new SheetsGateway.Gateway(spreadsheetId);
+}
 
-    var app = AppFactory.create(gateway);
-    var handler = app.handlers[body.action];
-    if (!handler) {
-      throw new Errors.AppError('ACTION_NOT_FOUND', 'Ação não mapeada', { action: body.action }, 404);
+function executeAction(action, payload, gateway) {
+  try {
+    if (!action) {
+      throw new Errors.AppError('VALIDATION_ERROR', 'action é obrigatória', null, 400);
     }
 
-    var data = handler(body.payload);
+    var app = AppFactory.create(gateway);
+    var handler = app.handlers[action];
+    if (!handler) {
+      throw new Errors.AppError('ACTION_NOT_FOUND', 'Ação não mapeada', { action: action }, 404);
+    }
+
+    var data = handler(payload || {});
     return Response.ok('Operação realizada com sucesso', data);
   } catch (error) {
     return Response.fail(error);
   }
 }
 
-function doPost(e) {
-  var spreadsheetId = PropertiesService.getScriptProperties().getProperty('DB_SPREADSHEET_ID');
-  if (!spreadsheetId) {
-    return Response.toWebAppJson(Response.fail(new Errors.AppError('CONFIG_ERROR', 'DB_SPREADSHEET_ID não configurado', null, 500)));
+function handleHttpPost(e, gateway) {
+  try {
+    var body = parseRequest(e);
+    Validators.validateEnvelope(body);
+    return executeAction(body.action, body.payload, gateway);
+  } catch (error) {
+    return Response.fail(error);
   }
+}
 
-  var gateway = new SheetsGateway.Gateway(spreadsheetId);
-  var response = handleHttpPost(e, gateway);
-  return Response.toWebAppJson(response);
+function runAction(action, payload) {
+  var gateway = resolveGateway();
+  return executeAction(action, payload, gateway);
+}
+
+function doPost(e) {
+  try {
+    var gateway = resolveGateway();
+    var response = handleHttpPost(e, gateway);
+    return Response.toWebAppJson(response);
+  } catch (error) {
+    return Response.toWebAppJson(Response.fail(error));
+  }
 }
